@@ -1,0 +1,8 @@
+code/prepro_data/*
+data/*
+
+**/.DS_Store
+**/.vscode/
+**/__pycache__/
+code/log
+**/.ipynb_checkpoints/

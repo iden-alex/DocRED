@@ -33,9 +33,11 @@ def init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 	Ma_e = 0
 	data = []
 	intrain = notintrain = notindevtrain = indevtrain = 0
+	# по всем документам
 	for i in range(len(ori_data)):
 		Ls = [0]
 		L = 0
+		# по всем предложениям в док-е,добавили в Ls абс позиции начала предложений по тексту
 		for x in ori_data[i]['sents']:
 			L += len(x)
 			Ls.append(L)
@@ -50,6 +52,7 @@ def init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 				dl = Ls[sent_id]
 				pos1 = vertexSet[j][k]['pos'][0]
 				pos2 = vertexSet[j][k]['pos'][1]
+				# абс позиции сущностей в тексте
 				vertexSet[j][k]['pos'] = (pos1+dl, pos2+dl)
 
 		ori_data[i]['vertexSet'] = vertexSet
@@ -104,6 +107,7 @@ def init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 			for k in range(len(vertexSet)):
 				if (j != k):
 					if (j, k) not in train_triple:
+						# bug - добавляем (0, 1), когда в train_tuple есть (1, 0) - порядок не важен
 						na_triple.append((j, k))
 
 		item['na_triple'] = na_triple
@@ -111,7 +115,9 @@ def init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 		item['sents'] = ori_data[i]['sents']
 		data.append(item)
 
+		# макс кол-во сущностей в док-е
 		Ma = max(Ma, len(vertexSet))
+		# макс кол-во отношений в док-е
 		Ma_e = max(Ma_e, len(item['labels']))
 
 
@@ -186,9 +192,7 @@ def init(data_file_name, rel2id, max_length = 512, is_training = True, suffix=''
 
 
 
-init(train_distant_file_name, rel2id, max_length = 512, is_training = True, suffix='')
+# init(train_distant_file_name, rel2id, max_length = 512, is_training = True, suffix='')
 init(train_annotated_file_name, rel2id, max_length = 512, is_training = False, suffix='_train')
 init(dev_file_name, rel2id, max_length = 512, is_training = False, suffix='_dev')
 init(test_file_name, rel2id, max_length = 512, is_training = False, suffix='_test')
-
-

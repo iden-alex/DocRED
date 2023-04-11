@@ -37,7 +37,7 @@ class Accuracy(object):
 			return float(self.correct) / self.total
 	def clear(self):
 		self.correct = 0
-		self.total = 0 
+		self.total = 0
 
 class Config(object):
 	def __init__(self, args):
@@ -51,12 +51,13 @@ class Config(object):
 		self.max_length = 512
 		self.pos_num = 2 * self.max_length
 		self.entity_num = self.max_length
-		self.relation_num = 97
+		self.relation_num = 50
 
 		self.coref_size = 20
 		self.entity_type_size = 20
 		self.max_epoch = 20
 		self.opt_method = 'Adam'
+		self.lr = 0.004
 		self.optimizer = None
 
 		self.checkpoint_dir = './checkpoint'
@@ -72,11 +73,13 @@ class Config(object):
 
 		self.period = 50
 
-		self.batch_size = 40
-		self.h_t_limit = 1800
+		self.batch_size = 20
+		# верхняя оценка - n^2, где n - макс кол-во сущностей в док-е
+		self.h_t_limit = 9000
 
 		self.test_batch_size = self.batch_size
-		self.test_relation_limit = 1800
+		# анлогично self.h_t_limit
+		self.test_relation_limit = 9000
 		self.char_limit = 16
 		self.sent_limit = 25
 		self.dis2idx = np.zeros((512), dtype='int64')
@@ -94,6 +97,16 @@ class Config(object):
 		self.train_prefix = args.train_prefix
 		self.test_prefix = args.test_prefix
 
+		# for mac
+		if torch.backends.mps.is_available():
+			self.device = torch.device("mps")
+			print ("MPS device found.")
+		elif torch.backends.cuda.is_available():
+			self.device = torch.device("cuda:0")
+			print ("CUDA device found.")
+		else:
+			print ("GPU device not found.")
+		# self.device = "cpu"
 
 		if not os.path.exists("log"):
 			os.mkdir("log")
@@ -131,7 +144,9 @@ class Config(object):
 		self.use_gpu = use_gpu
 	def set_epoch_range(self, epoch_range):
 		self.epoch_range = epoch_range
-	
+	def set_lr(self, lr):
+		self.lr = lr
+
 	def load_train_data(self):
 		print("Reading training data...")
 		prefix = self.train_prefix
@@ -187,22 +202,22 @@ class Config(object):
 	def get_train_batch(self):
 		random.shuffle(self.train_order)
 
-		context_idxs = torch.LongTensor(self.batch_size, self.max_length).cuda()
-		context_pos = torch.LongTensor(self.batch_size, self.max_length).cuda()
-		h_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).cuda()
-		t_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).cuda()
-		relation_multi_label = torch.Tensor(self.batch_size, self.h_t_limit, self.relation_num).cuda()
-		relation_mask = torch.Tensor(self.batch_size, self.h_t_limit).cuda()
+		context_idxs = torch.LongTensor(self.batch_size, self.max_length).to(self.device)
+		context_pos = torch.LongTensor(self.batch_size, self.max_length).to(self.device)
+		h_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).to(self.device)
+		t_mapping = torch.Tensor(self.batch_size, self.h_t_limit, self.max_length).to(self.device)
+		relation_multi_label = torch.Tensor(self.batch_size, self.h_t_limit, self.relation_num).to(self.device)
+		relation_mask = torch.Tensor(self.batch_size, self.h_t_limit).to(self.device)
 
-		pos_idx = torch.LongTensor(self.batch_size, self.max_length).cuda()
+		pos_idx = torch.LongTensor(self.batch_size, self.max_length).to(self.device)
 
-		context_ner = torch.LongTensor(self.batch_size, self.max_length).cuda()
-		context_char_idxs = torch.LongTensor(self.batch_size, self.max_length, self.char_limit).cuda()
+		context_ner = torch.LongTensor(self.batch_size, self.max_length).to(self.device)
+		context_char_idxs = torch.LongTensor(self.batch_size, self.max_length, self.char_limit).to(self.device)
 
-		relation_label = torch.LongTensor(self.batch_size, self.h_t_limit).cuda()
+		relation_label = torch.LongTensor(self.batch_size, self.h_t_limit).to(self.device)
 
 
-		ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit).cuda()
+		ht_pair_pos = torch.LongTensor(self.batch_size, self.h_t_limit).to(self.device)
 
 		for b in range(self.train_batches):
 			start_id = b * self.batch_size
@@ -257,6 +272,7 @@ class Config(object):
 
 					label = idx2label[(h_idx, t_idx)]
 
+					# косяк с pos[0] в данных  - тут явно не в токенах позиция
 					delta_dis = hlist[0]['pos'][0] - tlist[0]['pos'][0]
 					if delta_dis < 0:
 						ht_pair_pos[i, j] = -int(self.dis2idx[-delta_dis])
@@ -272,10 +288,11 @@ class Config(object):
 					relation_label[i, j] = label[rt]
 
 
-
+				# TO DO: видимо здесь берутся отрицательные примеры и огр-ся каким-то числом, мб сделать шафл подумать над огр-ем
 				lower_bound = len(ins['na_triple'])
 				# random.shuffle(ins['na_triple'])
 				# lower_bound = max(20, len(train_tripe)*3)
+				lower_bound = max(20, len(train_tripe)*5)
 
 
 				for j, (h_idx, t_idx) in enumerate(ins['na_triple'][:lower_bound], len(train_tripe)):
@@ -318,14 +335,14 @@ class Config(object):
 				   }
 
 	def get_test_batch(self):
-		context_idxs = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-		context_pos = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-		h_mapping = torch.Tensor(self.test_batch_size, self.test_relation_limit, self.max_length).cuda()
-		t_mapping = torch.Tensor(self.test_batch_size, self.test_relation_limit, self.max_length).cuda()
-		context_ner = torch.LongTensor(self.test_batch_size, self.max_length).cuda()
-		context_char_idxs = torch.LongTensor(self.test_batch_size, self.max_length, self.char_limit).cuda()
-		relation_mask = torch.Tensor(self.test_batch_size, self.h_t_limit).cuda()
-		ht_pair_pos = torch.LongTensor(self.test_batch_size, self.h_t_limit).cuda()
+		context_idxs = torch.LongTensor(self.test_batch_size, self.max_length).to(self.device)
+		context_pos = torch.LongTensor(self.test_batch_size, self.max_length).to(self.device)
+		h_mapping = torch.Tensor(self.test_batch_size, self.test_relation_limit, self.max_length).to(self.device)
+		t_mapping = torch.Tensor(self.test_batch_size, self.test_relation_limit, self.max_length).to(self.device)
+		context_ner = torch.LongTensor(self.test_batch_size, self.max_length).to(self.device)
+		context_char_idxs = torch.LongTensor(self.test_batch_size, self.max_length, self.char_limit).to(self.device)
+		relation_mask = torch.Tensor(self.test_batch_size, self.h_t_limit).to(self.device)
+		ht_pair_pos = torch.LongTensor(self.test_batch_size, self.h_t_limit).to(self.device)
 
 		for b in range(self.test_batches):
 			start_id = b * self.test_batch_size
@@ -374,6 +391,7 @@ class Config(object):
 							tlist = ins['vertexSet'][t_idx]
 
 							for h in hlist:
+								# берем и усредняем все упоминания объекта, при этом вектор упоминания - это среднее слов спана
 								h_mapping[i, j, h['pos'][0]:h['pos'][1]] = 1.0 / len(hlist) / (h['pos'][1] - h['pos'][0])
 							for t in tlist:
 								t_mapping[i, j, t['pos'][0]:t['pos'][1]] = 1.0 / len(tlist) / (t['pos'][1] - t['pos'][0])
@@ -425,10 +443,10 @@ class Config(object):
 		ori_model = model_pattern(config = self)
 		if self.pretrain_model != None:
 			ori_model.load_state_dict(torch.load(self.pretrain_model))
-		ori_model.cuda()
+		ori_model.to(self.device)
 		model = nn.DataParallel(ori_model)
 
-		optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()))
+		optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=self.lr)
 		# nll_average = nn.CrossEntropyLoss(size_average=True, ignore_index=IGNORE_INDEX)
 		BCE = nn.BCEWithLogitsLoss(reduction='none')
 
@@ -465,7 +483,7 @@ class Config(object):
 			self.acc_not_NA.clear()
 			self.acc_total.clear()
 
-			for data in self.get_train_batch():
+			for data in tqdm(self.get_train_batch()):
 
 				context_idxs = data['context_idxs']
 				context_pos = data['context_pos']
@@ -731,6 +749,6 @@ class Config(object):
 		model = model_pattern(config = self)
 
 		model.load_state_dict(torch.load(os.path.join(self.checkpoint_dir, model_name)))
-		model.cuda()
+		model.to(self.device)
 		model.eval()
 		f1, auc, pr_x, pr_y = self.test(model, model_name, True, input_theta)
