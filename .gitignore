@@ -5,4 +5,7 @@ data/*
 **/.vscode/
 **/__pycache__/
 code/log
+code/checkpoint
+code/fig_result
+log/
 **/.ipynb_checkpoints/

@@ -76,6 +76,7 @@ class Config(object):
 		self.batch_size = 20
 		# верхняя оценка - n^2, где n - макс кол-во сущностей в док-е
 		self.h_t_limit = 9000
+		self.na_triple_coef = None # верхняя граница сотоношения негативных отношений к положительным
 
 		self.test_batch_size = self.batch_size
 		# анлогично self.h_t_limit
@@ -146,6 +147,8 @@ class Config(object):
 		self.epoch_range = epoch_range
 	def set_lr(self, lr):
 		self.lr = lr
+	def set_na_triple_coef(self, na_triple_coef):
+		self.na_triple_coef = na_triple_coef
 
 	def load_train_data(self):
 		print("Reading training data...")
@@ -289,11 +292,12 @@ class Config(object):
 
 
 				# TO DO: видимо здесь берутся отрицательные примеры и огр-ся каким-то числом, мб сделать шафл подумать над огр-ем
-				lower_bound = len(ins['na_triple'])
-				# random.shuffle(ins['na_triple'])
-				# lower_bound = max(20, len(train_tripe)*3)
-				lower_bound = max(20, len(train_tripe)*5)
 
+				random.shuffle(ins['na_triple'])
+				if self.na_triple_coef:
+					lower_bound = min(len(ins['na_triple']), len(train_tripe)*self.na_triple_coef)
+				else:
+					lower_bound = len(ins['na_triple'])
 
 				for j, (h_idx, t_idx) in enumerate(ins['na_triple'][:lower_bound], len(train_tripe)):
 					hlist = ins['vertexSet'][h_idx]

@@ -23,6 +23,8 @@ parser.add_argument('--test_prefix', type = str, default = 'dev_dev')
 parser.add_argument('--batch_size', type = int, default = 40)
 parser.add_argument('--max_epoch', type = int, default = 200)
 parser.add_argument('--lr', type = float, default = 0.001)
+parser.add_argument('--na_triple_coef', type = int, default = 5)
+
 
 
 args = parser.parse_args()
@@ -37,6 +39,8 @@ con = config.Config(args)
 con.set_batch_size(args.batch_size)
 con.set_lr(args.lr)
 con.set_max_epoch(args.max_epoch)
+con.set_na_triple_coef(args.na_triple_coef)
+
 con.load_train_data()
 con.load_test_data()
 # con.set_train_model()
